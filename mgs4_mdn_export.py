@@ -4,7 +4,7 @@ import mathutils
 from bpy_extras.io_utils import ExportHelper
 from bpy.props import StringProperty, BoolProperty
 from bpy.types import Operator
-from mdn_shared import *
+from mgs4_mdn_shared import *
 
 bl_info = {
     "name": "Metal Gear Solid 4 MDN Export",
@@ -492,7 +492,7 @@ def write_skins(writer, meshes, bones):
 def normalize_and_compress_vector(vector):
     if vector.length > 0:
         vector = vector.normalized()
-        
+    
     nx = int(vector.x * 1023.0)
     ny = int(vector.y * 1023.0)
     nz = int(vector.z * 511.0)
@@ -502,7 +502,6 @@ def normalize_and_compress_vector(vector):
     nz = max(-511, min(511, nz))
     
     packed = to_dec(nx, ny, nz)
-    
     return packed
 
 def create_vertex_definition(mesh_obj):
@@ -510,23 +509,23 @@ def create_vertex_definition(mesh_obj):
     position = []
     current_offset = 0
     mesh = mesh_obj.data
-    
+
     # 1. Position
     definition.append(MDN_DataType.FLOAT << 4 | MDN_Definition.POSITION)
     position.append(current_offset)
     current_offset += 12
-    
+
     # 2. Weight
     if mesh_obj.vertex_groups and any(v.groups for v in mesh.vertices):
         definition.append(MDN_DataType.UBYTE << 4 | MDN_Definition.WEIGHT)
         position.append(current_offset)
         current_offset += 4
-    
+
     # 3. Normal
     definition.append(MDN_DataType.FLOAT_COMPRESSED << 4 | MDN_Definition.NORMAL)
     position.append(current_offset)
     current_offset += 4
-    
+
     # 4. BoneIdx
     if mesh_obj.vertex_groups and any(v.groups for v in mesh.vertices):
         definition.append(MDN_DataType.UBYTE << 4 | MDN_Definition.BONEIDX)
@@ -543,20 +542,19 @@ def create_vertex_definition(mesh_obj):
     if mesh.uv_layers:
         # Ensure alignment for UV data
         current_offset = (current_offset + 3) & ~3
-        
-        # Add each UV channel definition
+
         for i in range(min(len(mesh.uv_layers), 6)):  # Maximum of 6 UV channels
             definition.append(MDN_DataType.HALFFLOAT << 4 | (MDN_Definition.TEXTURE00 + i))
             position.append(current_offset)
             current_offset += 4  # Each UV pair is 2 half-floats = 4 bytes
-    
+
+    # Pad out the definition and positions to 16 entries each.
     while len(definition) < 16:
         definition.append(0)
     while len(position) < 16:
         position.append(0)
-    
+
     stride = (current_offset + 3) & ~3
-    
     return definition, position, stride
 
 def calculate_tangents(mesh_obj):
@@ -565,19 +563,19 @@ def calculate_tangents(mesh_obj):
     
     vertex_tangents = {}
     vertex_counts = {}
-    
+
     for poly in mesh.polygons:
         for loop_idx in poly.loop_indices:
             vertex_idx = mesh.loops[loop_idx].vertex_index
             tangent = mesh.loops[loop_idx].tangent
-            
+
             if vertex_idx not in vertex_tangents:
                 vertex_tangents[vertex_idx] = mathutils.Vector((0, 0, 0))
                 vertex_counts[vertex_idx] = 0
-                
+
             vertex_tangents[vertex_idx] += tangent
             vertex_counts[vertex_idx] += 1
-    
+
     final_tangents = {}
     for vertex_idx, tangent_sum in vertex_tangents.items():
         count = vertex_counts[vertex_idx]
@@ -586,38 +584,17 @@ def calculate_tangents(mesh_obj):
             if avg_tangent.length > 0:
                 avg_tangent.normalize()
             final_tangents[vertex_idx] = avg_tangent
-            
+
     return final_tangents
 
-def write_vertex_data(writer, mesh_obj, vertex_def):
-    definition_bytes, position_bytes, stride = vertex_def
-    base_offset = writer.offset
-
+def calculate_normals(mesh_obj):
     mesh = mesh_obj.data
-    
-    unit_scale = bpy.context.scene.unit_settings.scale_length
-    game_scale = MODEL_EXPORT_SCALE * unit_scale
-    
-    if mesh.uv_layers:
-        mesh.calc_tangents()
-    
-    writer.pad_to_alignment(16)
-    vertex_start = writer.offset
 
-    vertex_normals = {}
-    vertex_tangents = {}
-
-    mesh.calc_tangents()
     loop_normals = [0.0] * (len(mesh.loops) * 3)
     mesh.loops.foreach_get("normal", loop_normals)
 
-    imported_tangents = None
-    if "imported_tangents" in mesh_obj:
-        imported_tangents = mesh_obj["imported_tangents"]
-        
     vertex_normal_sums = {}
     vertex_normal_counts = {}
-
     for poly in mesh.polygons:
         for loop_idx, vertex_idx in zip(poly.loop_indices, poly.vertices):
             i = loop_idx * 3
@@ -626,36 +603,35 @@ def write_vertex_data(writer, mesh_obj, vertex_def):
                 loop_normals[i + 1],
                 loop_normals[i + 2]
             ))
-            
             if vertex_idx not in vertex_normal_sums:
                 vertex_normal_sums[vertex_idx] = mathutils.Vector((0, 0, 0))
                 vertex_normal_counts[vertex_idx] = 0
-                
-                if imported_tangents and vertex_idx * 3 + 2 < len(imported_tangents):
-                    i = vertex_idx * 3
-                    tangent = mathutils.Vector((
-                        imported_tangents[i],
-                        imported_tangents[i + 1],
-                        imported_tangents[i + 2]
-                    ))
-                    vertex_tangents[vertex_idx] = tangent
-                else:
-                    vertex_tangents = calculate_tangents(mesh_obj)
-            
             vertex_normal_sums[vertex_idx] += normal
             vertex_normal_counts[vertex_idx] += 1
 
-    for vertex_idx in vertex_normal_sums:
+    vertex_normals = {}
+    for vertex_idx, sum_normal in vertex_normal_sums.items():
         count = vertex_normal_counts[vertex_idx]
-        if count > 0:
-            avg_normal = vertex_normal_sums[vertex_idx] / count
-            if avg_normal.length > 0:
-                avg_normal.normalize()
-            vertex_normals[vertex_idx] = avg_normal
+        avg_normal = sum_normal / count
+        if avg_normal.length > 0:
+            avg_normal.normalize()
+        vertex_normals[vertex_idx] = avg_normal
 
-    for vertex_idx in vertex_tangents:
-        if vertex_tangents[vertex_idx].length > 0:
-            vertex_tangents[vertex_idx].normalize()
+    return vertex_normals
+
+def write_vertex_data(writer, mesh_obj, vertex_def):
+    definition_bytes, position_bytes, stride = vertex_def
+    base_offset = writer.offset
+    mesh = mesh_obj.data
+
+    unit_scale = bpy.context.scene.unit_settings.scale_length
+    game_scale = MODEL_EXPORT_SCALE * unit_scale
+
+    if mesh.uv_layers:
+        mesh.calc_tangents()
+
+    vertex_tangents = calculate_tangents(mesh_obj)
+    vertex_normals = calculate_normals(mesh_obj)
 
     vertex_uvs = {}
     if mesh.uv_layers:
@@ -667,38 +643,41 @@ def write_vertex_data(writer, mesh_obj, vertex_def):
                 uv_data = uv_layer.data[loop.index].uv
                 vertex_uvs[vertex_idx][uv_layer.name] = (uv_data[0], uv_data[1])
 
+    writer.pad_to_alignment(16)
+    vertex_start = writer.offset
     end_pos = 0
 
     for vertex_idx, vertex in enumerate(mesh.vertices):
         vertex_offset = base_offset + (vertex_idx * stride)
-        
+
         for def_idx, def_byte in enumerate(definition_bytes):
             if def_byte == 0:
-                continue    
-                
+                continue
+
             component_type = def_byte & 0x0F
             pos = position_bytes[def_idx]
-                
             writer.seek(vertex_offset + pos)
-            
+
             if component_type == MDN_Definition.POSITION:
                 world_vertex = mesh_obj.matrix_world @ vertex.co
                 scaled_vertex = world_vertex * game_scale
                 writer.write_vec3(scaled_vertex.x, scaled_vertex.y, scaled_vertex.z)
-                
+
             elif component_type == MDN_Definition.NORMAL:
                 normal = vertex_normals.get(vertex_idx, mathutils.Vector((0, 0, 1)))
                 writer.write_uint32(normalize_and_compress_vector(normal))
-                    
+
             elif component_type == MDN_Definition.TANGENT:
                 tangent = vertex_tangents.get(vertex_idx, mathutils.Vector((1, 0, 0)))
                 writer.write_uint32(normalize_and_compress_vector(tangent))
-                
-            elif component_type >= MDN_Definition.TEXTURE00 and component_type <= MDN_Definition.TEXTURE05:
+
+            elif (component_type >= MDN_Definition.TEXTURE00 and
+                  component_type <= MDN_Definition.TEXTURE05):
                 uv_idx = component_type - MDN_Definition.TEXTURE00
                 if uv_idx < len(mesh.uv_layers):
                     uv_layer = mesh.uv_layers[uv_idx]
-                    if vertex_idx in vertex_uvs and uv_layer.name in vertex_uvs[vertex_idx]:
+                    if (vertex_idx in vertex_uvs and
+                        uv_layer.name in vertex_uvs[vertex_idx]):
                         u, v = vertex_uvs[vertex_idx][uv_layer.name]
                         writer.write_half_float(u)
                         writer.write_half_float(-v)
@@ -712,21 +691,21 @@ def write_vertex_data(writer, mesh_obj, vertex_def):
             elif component_type == MDN_Definition.WEIGHT:
                 if vertex.groups:
                     groups = sorted([(g.group, g.weight) for g in vertex.groups],
-                                 key=lambda x: x[1], reverse=True)[:4]
+                                    key=lambda x: x[1], reverse=True)[:4]
                     total = sum(weight for _, weight in groups)
-                    for _, weight in groups[:4]:
-                        writer.write_uint8(int((weight/total if total > 0 else 0) * 255))
+                    for _, weight in groups:
+                        writer.write_uint8(int((weight / total if total > 0 else 0) * 255))
                     for _ in range(4 - len(groups)):
                         writer.write_uint8(0)
                 else:
                     for _ in range(4):
                         writer.write_uint8(0)
-                    
+
             elif component_type == MDN_Definition.BONEIDX:
                 if vertex.groups:
                     groups = sorted([(g.group, g.weight) for g in vertex.groups],
-                                 key=lambda x: x[1], reverse=True)[:4]
-                    for group_idx, _ in groups[:4]:
+                                    key=lambda x: x[1], reverse=True)[:4]
+                    for group_idx, _ in groups:
                         writer.write_uint8(group_idx)
                     for _ in range(4 - len(groups)):
                         writer.write_uint8(0)
@@ -734,12 +713,11 @@ def write_vertex_data(writer, mesh_obj, vertex_def):
                     for _ in range(4):
                         writer.write_uint8(0)
 
-            if (writer.offset > end_pos):
+            if writer.offset > end_pos:
                 end_pos = writer.offset
 
     writer.seek(end_pos)
     writer.pad_to_alignment(16)
-
 
 class ExportMDN(Operator, ExportHelper):
     bl_idname = "export_mesh.mdn"
