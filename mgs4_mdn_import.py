@@ -4,7 +4,7 @@ import mathutils
 from bpy_extras.io_utils import ImportHelper
 from bpy.props import StringProperty, BoolProperty, EnumProperty
 from bpy.types import Operator
-from mdn_shared import *
+from mgs4_mdn_shared import *
 import os
 
 bl_info = {
