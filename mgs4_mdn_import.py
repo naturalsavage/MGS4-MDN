@@ -516,6 +516,7 @@ class ImportMDN(Operator, ImportHelper):
             # Read faces and assign materials
             face_indices = []
             face_materials = []
+            material_indices = {}
             if mdn_mesh.numFaceIdx > 0:
                 face_start_idx = 0
                 for face_idx in range(mdn_mesh.faceIdx, mdn_mesh.faceIdx + mdn_mesh.numFaceIdx):
@@ -523,21 +524,27 @@ class ImportMDN(Operator, ImportHelper):
                     reader.seek(header.faceBufferOffset + face.offset)
                     section_indices = read_face_buffer(reader, face)
                     face_indices.extend(section_indices)
-                    
+                
                     if face.matGroup < len(materials):
                         material = materials[face.matGroup]
                         if material.strcode in b_materials:
-                            if face.matGroup not in [mat["mdn_strcode"] for mat in mesh_data.materials]:
+                            if material.strcode not in material_indices:
                                 mesh_data.materials.append(b_materials[material.strcode])
-                            mat_idx = len(mesh_data.materials) - 1
+                                material_indices[material.strcode] = len(mesh_data.materials) - 1
+                        
+                            mat_idx = material_indices[material.strcode]
                             face_materials.extend([mat_idx] * len(section_indices))
                     face_start_idx += len(section_indices)
 
-            
             # Create mesh geometry
             if vertices and face_indices:
                 apply_mesh_data(mesh_obj, vertices, normals, tangents, face_indices)
                 
+                if face_materials:
+                    for i, mat_idx in enumerate(face_materials):
+                        if i < len(mesh_data.polygons):
+                            mesh_data.polygons[i].material_index = mat_idx
+
                 # Apply UVs
                 for uv_channel, uv_coords in uvs.items():
                     if uv_coords:
