@@ -322,8 +322,8 @@ def calculate_vertex_offset(previous_meshes):
 def get_face_material_index(mesh_obj, material_lookup):
     if mesh_obj.material_slots and mesh_obj.material_slots[0].material:
         material = mesh_obj.material_slots[0].material
-        if material in material_lookup:
-            return material_lookup[material]
+        if material.name in material_lookup:
+            return material_lookup[material.name]
         else:
             print(f"Warning: Material {material.name} not found in lookup")
     else:
@@ -346,7 +346,7 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
         return
 
     used_textures = set()
-        
+  
     for node_input in princ_bsdf.inputs:
         if node_input.is_linked:
             from_node = node_input.links[0].from_node
@@ -412,8 +412,7 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
                 print(f"Warning: Normal texture name '{from_node.image.name}' is not a valid hex value")
     
     mdn_material.textureCount = len(used_textures)
-    print(f"Total unique textures: {len(used_textures)}")
-    
+
     if "mdn_diffuse_color" in material:
         mdn_material.diffuse_color = tuple(material["mdn_diffuse_color"])
     else:
@@ -452,7 +451,7 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
 def create_default_material(material):
     mdn_material = MDN_Material()
     mdn_material.strcode = strcode_from_name(material.name)
-    mdn_material.flag = 0
+    mdn_material.flag = 0x50
     mdn_material.textureCount = 0
     mdn_material.colorCount = 8
     
@@ -750,15 +749,18 @@ class ExportMDN(Operator, ExportHelper):
 
         for mesh_obj in meshes:
             for material_slot in mesh_obj.material_slots:
-                if material_slot.material and material_slot.material not in material_lookup:
-                    material = material_slot.material
+                material = material_slot.material
+
+                if not material:
+                    continue
+
+                if  material.name not in material_lookup:
                     if "mdn_flag" in material:
                         mdn_material = MDN_Material()
                         mdn_material.flag = material["mdn_flag"]
                         mdn_material.strcode = strcode_from_name(material.name)
-                        mdn_material.numTexture = 0 
-                        mdn_material.colorCount = 8
-                        mdn_material.texture = []
+                        mdn_material.textureCount = material["mdn_textureCount"]
+                        mdn_material.colorCount = material["mdn_colorCount"]
                     
                     else:
                         mdn_material = create_default_material(material)
@@ -766,7 +768,7 @@ class ExportMDN(Operator, ExportHelper):
                     process_material_nodes(material, mdn_material, textures, texture_lookup)
                     
                     materials.append(mdn_material)
-                    material_lookup[material] = len(materials) - 1
+                    material_lookup[material.name] = len(materials) - 1
                     
         # Update face material indices
         faces = []
