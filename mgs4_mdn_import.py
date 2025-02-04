@@ -52,21 +52,23 @@ def create_armature(bones, name="MDN_Armature"):
     armature = bpy.data.armatures.new(name)
     armature_obj = bpy.data.objects.new(name, armature)
     bpy.context.collection.objects.link(armature_obj)
-    
+   
     bpy.context.view_layer.objects.active = armature_obj
     bpy.ops.object.mode_set(mode='EDIT')
-    
+   
     edit_bones = armature.edit_bones
     bone_list = {}
-    
+   
     for idx, mdn_bone in enumerate(bones):
         bone_name = f"{mdn_bone.strcode:08X}"
         edit_bone = edit_bones.new(bone_name)
         bone_list[idx] = edit_bone
-        
+        edit_bone["bone_table_index"] = idx
+
         pos = mathutils.Vector(mdn_bone.worldPos[:3])
+
         edit_bone.head = pos
-        
+
         if mdn_bone.parent >= 0 and mdn_bone.parent < len(bones):
             parent_pos = mathutils.Vector(bones[mdn_bone.parent].worldPos[:3])
             if (parent_pos - pos).length < 0.001:
@@ -75,33 +77,70 @@ def create_armature(bones, name="MDN_Armature"):
                 edit_bone.tail = parent_pos
         else:
             edit_bone.tail = pos + mathutils.Vector((0, 0, 0.1))
-            
+
     for idx, mdn_bone in enumerate(bones):
         if mdn_bone.parent >= 0 and mdn_bone.parent < len(bones):
             bone_list[idx].parent = bone_list[mdn_bone.parent]
-    
+   
     bpy.ops.object.mode_set(mode='OBJECT')
-    
+   
     return armature_obj, armature.bones
 
-def setup_bone_weights(mesh_obj, bone_weights, bone_indices, bones):
+def setup_bone_weights(mesh_obj, bone_weights, bone_indices, bones, skin_data=None):
     if not (bone_weights and bone_indices):
         return
-        
+
+    skinned_bones = []
     vertex_groups = {}
-    for idx, bone in enumerate(bones):
-        group_name = f"{bone.strcode:08X}"
-        vertex_groups[idx] = mesh_obj.vertex_groups.new(name=group_name)
-    
+
+    if skin_data:
+        for i in range(skin_data.count):
+            bone_idx = skin_data.boneId[i]
+            if bone_idx < len(bones):
+                group_name = f"{bones[bone_idx].strcode:08X}"
+                vertex_groups[bone_idx] = mesh_obj.vertex_groups.new(name=group_name)
+                skinned_bones.append(group_name)
+
+    mesh_obj["skinned_bones"] = skinned_bones
+
+    # Find all actually used bones
+    used_bone_indices = set()
     for vert_idx in range(len(mesh_obj.data.vertices)):
         for i in range(4):
             weight_idx = vert_idx * 4 + i
             bone_idx = bone_indices[weight_idx]
             weight = bone_weights[weight_idx]
-            
             if weight > 0 and bone_idx < len(bones):
-                vertex_groups[bone_idx].add([vert_idx], weight, 'REPLACE')
+                used_bone_indices.add(bone_idx)
+    
+    for bone_idx in used_bone_indices:
+        if bone_idx not in vertex_groups and bone_idx < len(bones):
+            group_name = f"{bones[bone_idx].strcode:08X}"
+            vertex_groups[bone_idx] = mesh_obj.vertex_groups.new(name=group_name)
 
+    # Assign weights to vertices
+    for vert_idx in range(len(mesh_obj.data.vertices)):
+        weights = []
+        for i in range(4):
+            weight_idx = vert_idx * 4 + i
+            bone_idx = bone_indices[weight_idx]
+            weight = bone_weights[weight_idx]
+            if bone_idx in vertex_groups and weight > 0:
+                weights.append((bone_idx, weight))
+        
+        if weights:
+            total_weight = sum(w for _, w in weights)
+            if total_weight > 0:
+                for bone_idx, weight in weights:
+                    normalized_weight = weight / total_weight
+                    vertex_groups[bone_idx].add([vert_idx], normalized_weight, 'REPLACE')
+        else:
+            first_bone = min(vertex_groups.keys()) if vertex_groups else None
+            if first_bone is not None:
+                vertex_groups[first_bone].add([vert_idx], 1.0, 'REPLACE')
+    
+    return vertex_groups
+  
 def create_material(material, textures, base_path):
     mat_name = f"{material.strcode:08X}"
     b_material = bpy.data.materials.new(name=mat_name)
@@ -250,7 +289,7 @@ def read_vertex_buffer(reader, vertex_def, num_vertices):
                     y = parse_vertex_component(reader, def_type, vert_start, pos + 4)
                     z = parse_vertex_component(reader, def_type, vert_start, pos + 8)
                     vertex_data['pos'] = (x, y, z)
-                    
+
                 elif component_type == MDN_Definition.NORMAL or component_type == MDN_Definition.TANGENT:
                     reader.seek(vert_start + pos)
                     if type_format == MDN_DataType.FLOAT_COMPRESSED:
@@ -300,7 +339,6 @@ def read_vertex_buffer(reader, vertex_def, num_vertices):
                         uv_index = component_type - MDN_Definition.TEXTURE00
                     
                     uvs[f'UV{uv_index}'].append((u, v))
-
                 
                 elif component_type == MDN_Definition.WEIGHT:
                     weights = [
@@ -312,6 +350,9 @@ def read_vertex_buffer(reader, vertex_def, num_vertices):
                     weight_sum = sum(weights)
                     if weight_sum > 0:
                         weights = [w / weight_sum for w in weights]
+
+                    #print(f"[{v}] = {weights}")
+
                     vertex_data['weights'] = weights
                     
                 elif component_type == MDN_Definition.BONEIDX:
@@ -322,6 +363,7 @@ def read_vertex_buffer(reader, vertex_def, num_vertices):
                         reader.read_uint8(),
                         reader.read_uint8()
                     ]
+                    #print(f"[{v}] = {bones}")
                     vertex_data['bones'] = bones
                     
             except Exception as e:
@@ -370,7 +412,6 @@ def apply_mesh_data(mesh_obj, vertices, normals, tangents, face_indices, use_smo
         tangent_data = []
         for t in tangents:
             tangent_data.extend([t[0], t[1], t[2]])
-        mesh_obj["imported_tangents"] = tangent_data
 
     mesh.validate()
     mesh.update()
@@ -410,6 +451,9 @@ class ImportMDN(Operator, ImportHelper):
         # Read all data structures first
         reader.seek(header.boneOffset)
         bones = [MDN_Bone.read(reader) for _ in range(header.numBones)]
+        
+        reader.seek(header.skinOffset)
+        skins = [MDN_Skin.read(reader) for _ in range(header.numSkin)] if header.numSkin > 0 else []
         
         reader.seek(header.materialOffset)
         materials = [MDN_Material.read(reader) for _ in range(header.numMaterial)]
@@ -518,9 +562,13 @@ class ImportMDN(Operator, ImportHelper):
             if mdn_mesh.groupIdx < len(groups):
                 mesh_obj.parent = group_objects[mdn_mesh.groupIdx]
             
+            skin_data = None
+            if mdn_mesh.skinIdx < len(skins):
+                skin_data = skins[mdn_mesh.skinIdx]
+            
             # Set up armature if available
             if armature_obj and bone_weights and bone_indices:
-                setup_bone_weights(mesh_obj, bone_weights, bone_indices, bones)
+                setup_bone_weights(mesh_obj, bone_weights, bone_indices, bones, skin_data)
                 modifier = mesh_obj.modifiers.new(name="Armature", type='ARMATURE')
                 modifier.object = armature_obj
             
