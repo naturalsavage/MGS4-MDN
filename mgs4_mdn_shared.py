@@ -15,6 +15,9 @@ def strcode(string: str) -> int:
 
 def strcode_from_name(name):
     try:
+        if "." in name:
+            name = name.split(".")[0]
+            
         if name.startswith("0x"):
             return int(name[2:], 16)
         else:

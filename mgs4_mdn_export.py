@@ -1,3 +1,4 @@
+import os
 import bpy
 import bmesh
 import mathutils
@@ -196,19 +197,13 @@ def collect_groups(meshes, armature_obj=None):
     bone_strcodes = set()
     if armature_obj:
         for bone in armature_obj.data.bones:
-            try:
-                if bone.name.startswith("0x"):
-                    bone_strcodes.add(int(bone.name[2:], 16))
-                else:
-                    bone_strcodes.add(int(bone.name, 16))
-            except ValueError:
-                bone_strcodes.add(abs(hash(bone.name)) & 0xFFFFFFFF)
-    
+            bone_strcodes.add(strcode_from_name(bone.name))
+
     for mesh_obj in bpy.context.scene.objects:
         if mesh_obj.type == 'EMPTY' and mesh_obj.name.startswith("MeshGroup_"):
             try:
                 strcode_str = mesh_obj.name.split("_")[1]
-                strcode = int(strcode_str, 16)
+                strcode = strcode_from_name(strcode_str)
                 
                 if strcode in bone_strcodes:
                     continue
@@ -358,7 +353,8 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
             if from_node.type == 'TEX_IMAGE' and from_node.image:
                 try:
                     tex_name = from_node.image.name.split('.')[0]
-                    strcode = int(tex_name, 16)
+
+                    strcode = strcode_from_name(tex_name)
                     used_textures.add(strcode)
                     
                     if strcode in texture_lookup:
@@ -391,7 +387,7 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
         if from_node.type == 'TEX_IMAGE' and from_node.image:
             try:
                 tex_name = from_node.image.name.split('.')[0]
-                strcode = int(tex_name, 16)
+                strcode = strcode_from_name(tex_name)
                 used_textures.add(strcode)
                 
                 if strcode in texture_lookup:
@@ -455,12 +451,7 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
 
 def create_default_material(material):
     mdn_material = MDN_Material()
-    try:
-        mdn_material.strcode = int(material.name, 16)
-    except ValueError:
-        print(f"Warning: Material name '{material.name}' is not a valid hex value")
-        mdn_material.strcode = 0
-        
+    mdn_material.strcode = strcode_from_name(material.name)
     mdn_material.flag = 0
     mdn_material.textureCount = 0
     mdn_material.colorCount = 8
@@ -764,7 +755,7 @@ class ExportMDN(Operator, ExportHelper):
                     if "mdn_flag" in material:
                         mdn_material = MDN_Material()
                         mdn_material.flag = material["mdn_flag"]
-                        mdn_material.strcode = int(material.name, 16)
+                        mdn_material.strcode = strcode_from_name(material.name)
                         mdn_material.numTexture = 0 
                         mdn_material.colorCount = 8
                         mdn_material.texture = []
@@ -793,10 +784,12 @@ class ExportMDN(Operator, ExportHelper):
             faces.append(face)
             current_face_offset += ((len(mesh_obj.data.loop_triangles) * 6 + 15) & ~15)
 
+        basename = os.path.splitext(os.path.basename(filepath))[0]
+
         # Initialize header
         header = MDN_Header()
         header.magic = 0x4D444E20  # 'MDN '
-        header.filename = 0x0A8396
+        header.filename = strcode(basename)
         header.numBones = len(bones)
         header.numGroups = len(groups)
         header.numMesh = len(meshes)
