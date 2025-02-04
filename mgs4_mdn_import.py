@@ -45,7 +45,7 @@ def find_texture_file(textures_path, strcode):
         if os.path.exists(tex_path):
             return tex_path
 
-    print(f"could not find {strcode:08x}.dds")
+    print(f"Warning: could not find texture {strcode:08x}.dds")
     return tex_path
 
 def create_armature(bones, name="MDN_Armature"):
@@ -351,8 +351,6 @@ def read_vertex_buffer(reader, vertex_def, num_vertices):
                     if weight_sum > 0:
                         weights = [w / weight_sum for w in weights]
 
-                    #print(f"[{v}] = {weights}")
-
                     vertex_data['weights'] = weights
                     
                 elif component_type == MDN_Definition.BONEIDX:
@@ -363,7 +361,6 @@ def read_vertex_buffer(reader, vertex_def, num_vertices):
                         reader.read_uint8(),
                         reader.read_uint8()
                     ]
-                    #print(f"[{v}] = {bones}")
                     vertex_data['bones'] = bones
                     
             except Exception as e:

@@ -262,10 +262,6 @@ def collect_groups(meshes, armature_obj=None):
             if mesh_obj not in mesh_to_group:
                 mesh_to_group[mesh_obj] = 0
     
-    print("\nCollected Mesh Groups:")
-    for i, group in enumerate(groups):
-        print(f"Group {i}: strcode={hex(group.strcode)}, parent={group.parent}")
-        
     return groups, mesh_to_group
 
 def calculate_world_bounds(meshes):
@@ -761,13 +757,10 @@ class ExportMDN(Operator, ExportHelper):
         material_lookup = {}
         texture_lookup = {}
 
-        print("\nProcessing materials and textures...")
         for mesh_obj in meshes:
             for material_slot in mesh_obj.material_slots:
                 if material_slot.material and material_slot.material not in material_lookup:
                     material = material_slot.material
-                    print(f"\nProcessing material: {material.name}")
-                    
                     if "mdn_flag" in material:
                         mdn_material = MDN_Material()
                         mdn_material.flag = material["mdn_flag"]
@@ -777,11 +770,8 @@ class ExportMDN(Operator, ExportHelper):
                         mdn_material.texture = []
                     
                     else:
-                        print(f"  Creating new MDN material")
                         mdn_material = create_default_material(material)
                     
-                    print(f"mdn_material {mdn_material.strcode:X}")
-
                     process_material_nodes(material, mdn_material, textures, texture_lookup)
                     
                     materials.append(mdn_material)

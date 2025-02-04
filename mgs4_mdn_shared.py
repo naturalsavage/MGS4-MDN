@@ -353,16 +353,9 @@ class MDN_Group:
     @classmethod
     def read(cls, reader):
         cls.strcode = reader.read_uint32()
-        print(f"strcode: {cls.strcode:X}")
-
         cls.flag = reader.read_uint32()
-        print(f"flag: {cls.flag:X}")
-
         cls.parent = reader.read_uint32()
-        print(f"parent: {cls.parent:X}")
-
         cls.pad = reader.read_uint32()
-        print(f"pad: {cls.pad:X}")
 
         return cls(
             strcode=cls.strcode,
@@ -453,7 +446,6 @@ class MDN_VertexDefinition:
             self.defintionCount = 16
             
         if self.stride < 12:
-            print(f"Warning: Invalid stride {self.stride}, setting to minimum 12")
             self.stride = 12
 
     @classmethod
@@ -469,13 +461,6 @@ class MDN_VertexDefinition:
             vdef.position = list(reader.read_bytes(16))
             
             vdef.__post_init__()
-            
-            print(f"\nRead vertex definition:")
-            print(f"  Definition count: {vdef.defintionCount:X}")
-            print(f"  Stride: {vdef.stride:X}")
-            print(f"  Offset: {vdef.offset:X}")
-            print(f"  Definition bytes: {[hex(x) for x in vdef.definition[:vdef.defintionCount]]}")
-            print(f"  Position bytes: {[hex(x) for x in vdef.position[:vdef.defintionCount]]}")
 
             return vdef
             
@@ -484,13 +469,6 @@ class MDN_VertexDefinition:
             return cls(defintionCount=1, stride=12)
 
     def write(self, writer):
-        print(f"\nWriting vertex definition:")
-        print(f"  Definition count: {self.defintionCount:X}")
-        print(f"  Stride: {self.stride:X}")
-        print(f"  Offset: {self.offset:X}")
-        print(f"  Definition bytes: {[hex(x) for x in self.definition[:self.defintionCount]]}")
-        print(f"  Position bytes: {[hex(x) for x in self.position[:self.defintionCount]]}")
-        
         writer.write_uint32(self.pad)
         writer.write_uint32(self.defintionCount)
         writer.write_uint32(self.stride)
