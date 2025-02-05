@@ -44,6 +44,10 @@ def get_vertex_weights(vertex, vertex_groups, bone_name_to_idx):
             
         weight = group.weight
         if weight > 0:
+            if not group_name in bone_name_to_idx:
+                print(f"Warning: unable to find bone {group_name}")
+                continue
+
             bone_idx = bone_name_to_idx[group_name]
             weights.append((bone_idx, weight))
 
@@ -548,7 +552,11 @@ def create_vertex_definition(mesh_obj):
 
 def calculate_tangents(mesh_obj):
     mesh = mesh_obj.data
-    mesh.calc_tangents()
+
+    if mesh.uv_layers:
+        mesh.calc_tangents()
+    else:
+        return {}
     
     vertex_tangents = {}
     vertex_counts = {}
@@ -615,9 +623,6 @@ def write_vertex_data(writer, mesh_obj, vertex_def, bone_name_to_idx):
 
     unit_scale = bpy.context.scene.unit_settings.scale_length
     game_scale = MODEL_EXPORT_SCALE * unit_scale
-
-    if mesh.uv_layers:
-        mesh.calc_tangents()
 
     vertex_tangents = calculate_tangents(mesh_obj)
     vertex_normals = calculate_normals(mesh_obj)
