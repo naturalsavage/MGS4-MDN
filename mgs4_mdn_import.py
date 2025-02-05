@@ -140,7 +140,7 @@ def setup_bone_weights(mesh_obj, bone_weights, bone_indices, bones, skin_data=No
                 vertex_groups[first_bone].add([vert_idx], 1.0, 'REPLACE')
     
     return vertex_groups
-  
+
 def create_material(material, textures, base_path):
     mat_name = f"{material.strcode:08X}"
     b_material = bpy.data.materials.new(name=mat_name)
@@ -157,14 +157,22 @@ def create_material(material, textures, base_path):
     b_material["mdn_textureCount"] = material.textureCount
     b_material["mdn_colorCount"] = material.colorCount
     
-    b_material["mdn_diffuseIndex"] = material.diffuseIndex
-    b_material["mdn_normalIndex"] = material.normalIndex
-    b_material["mdn_specularIndex"] = material.specularIndex
-    b_material["mdn_filterIndex"] = material.filterIndex
-    b_material["mdn_ambientIndex"] = material.ambientIndex
-    b_material["mdn_specGradientIndex"] = material.specGradientIndex
-    b_material["mdn_wrinkleIndex"] = material.wrinkleIndex
-    b_material["mdn_unknownIndex"] = material.unknownIndex
+    if material.diffuseIndex >= 0 and material.diffuseIndex < len(textures):
+        b_material["mdn_diffuseTexture"] = textures[material.diffuseIndex].strcode
+    if material.normalIndex >= 0 and material.normalIndex < len(textures):
+        b_material["mdn_normalTexture"] = textures[material.normalIndex].strcode
+    if material.specularIndex >= 0 and material.specularIndex < len(textures):
+        b_material["mdn_specularTexture"] = textures[material.specularIndex].strcode
+    if material.filterIndex >= 0 and material.filterIndex < len(textures):
+        b_material["mdn_filterTexture"] = textures[material.filterIndex].strcode
+    if material.ambientIndex >= 0 and material.ambientIndex < len(textures):
+        b_material["mdn_ambientTexture"] = textures[material.ambientIndex].strcode
+    if material.specGradientIndex >= 0 and material.specGradientIndex < len(textures):
+        b_material["mdn_specGradientTexture"] = textures[material.specGradientIndex].strcode
+    if material.wrinkleIndex >= 0 and material.wrinkleIndex < len(textures):
+        b_material["mdn_wrinkleTexture"] = textures[material.wrinkleIndex].strcode
+    if material.unknownIndex >= 0 and material.unknownIndex < len(textures):
+        b_material["mdn_unknownTexture"] = textures[material.unknownIndex].strcode
     
     b_material["mdn_diffuse_color"] = material.diffuse_color
     b_material["mdn_specular_color"] = material.specular_color
@@ -174,7 +182,7 @@ def create_material(material, textures, base_path):
     b_material["mdn_unknown_color4"] = material.unknown_color4
     b_material["mdn_unknown_color5"] = material.unknown_color5
     b_material["mdn_unknown_color6"] = material.unknown_color6
-
+    
     nodes = b_material.node_tree.nodes
     links = b_material.node_tree.links
     nodes.clear()

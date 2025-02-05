@@ -349,38 +349,43 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
         return
 
     used_textures = set()
-  
+
+    def process_texture_strcode(strcode):
+        if strcode is None:
+            return -1
+            
+        used_textures.add(strcode)
+        
+        if strcode in texture_lookup:
+            return texture_lookup[strcode]
+            
+        mdn_texture = MDN_Texture()
+        mdn_texture.strcode = strcode
+        mdn_texture.flag = 0
+        mdn_texture.scaleU = 1.0
+        mdn_texture.scaleV = 1.0
+        mdn_texture.posU = 0.0
+        mdn_texture.posV = 0.0
+        mdn_texture.pad = [0, 0]
+        
+        textures.append(mdn_texture)
+        tex_idx = len(textures) - 1
+        texture_lookup[strcode] = tex_idx
+        return tex_idx
+
     for node_input in princ_bsdf.inputs:
         if node_input.is_linked:
             from_node = node_input.links[0].from_node
             if from_node.type == 'TEX_IMAGE' and from_node.image:
                 try:
                     tex_name = from_node.image.name.split('.')[0]
-
                     strcode = strcode_from_name(tex_name)
-                    used_textures.add(strcode)
-                    
-                    if strcode in texture_lookup:
-                        tex_idx = texture_lookup[strcode]
-                    else:
-                        mdn_texture = MDN_Texture()
-                        mdn_texture.strcode = strcode
-                        mdn_texture.flag = 0
-                        mdn_texture.scaleU = 1.0
-                        mdn_texture.scaleV = 1.0
-                        mdn_texture.posU = 0.0
-                        mdn_texture.posV = 0.0
-                        mdn_texture.pad = [0, 0]
-                        
-                        textures.append(mdn_texture)
-                        tex_idx = len(textures) - 1
-                        texture_lookup[strcode] = tex_idx
                     
                     input_name = node_input.name.lower()
                     if input_name == 'base color':
-                        mdn_material.diffuseIndex = tex_idx
+                        mdn_material.diffuseIndex = process_texture_strcode(strcode)
                     elif input_name == 'specular ior level':
-                        mdn_material.specularIndex = tex_idx
+                        mdn_material.specularIndex = process_texture_strcode(strcode)
                         
                 except ValueError:
                     print(f"Warning: Texture name '{from_node.image.name}' is not a valid hex value")
@@ -391,30 +396,9 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
             try:
                 tex_name = from_node.image.name.split('.')[0]
                 strcode = strcode_from_name(tex_name)
-                used_textures.add(strcode)
-                
-                if strcode in texture_lookup:
-                    tex_idx = texture_lookup[strcode]
-                else:
-                    mdn_texture = MDN_Texture()
-                    mdn_texture.strcode = strcode
-                    mdn_texture.flag = 0
-                    mdn_texture.scaleU = 1.0
-                    mdn_texture.scaleV = 1.0
-                    mdn_texture.posU = 0.0
-                    mdn_texture.posV = 0.0
-                    mdn_texture.pad = [0, 0]
-                    
-                    textures.append(mdn_texture)
-                    tex_idx = len(textures) - 1
-                    texture_lookup[strcode] = tex_idx
-                
-                mdn_material.normalIndex = tex_idx
-                
+                mdn_material.normalIndex = process_texture_strcode(strcode)
             except ValueError:
                 print(f"Warning: Normal texture name '{from_node.image.name}' is not a valid hex value")
-    
-    mdn_material.textureCount = len(used_textures)
 
     if "mdn_diffuse_color" in material:
         mdn_material.diffuse_color = tuple(material["mdn_diffuse_color"])
@@ -436,6 +420,18 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
             1.0
         )
     
+    # Temporary fix until we know how to process these
+    if "mdn_filterTexture" in material:
+        mdn_material.filterIndex = process_texture_strcode(material["mdn_filterTexture"])
+    if "mdn_ambientTexture" in material:
+        mdn_material.ambientIndex = process_texture_strcode(material["mdn_ambientTexture"])
+    if "mdn_specGradientTexture" in material:
+        mdn_material.specGradientIndex = process_texture_strcode(material["mdn_specGradientTexture"])
+    if "mdn_wrinkleTexture" in material:
+        mdn_material.wrinkleIndex = process_texture_strcode(material["mdn_wrinkleTexture"])
+    if "mdn_unknownTexture" in material:
+        mdn_material.unknownIndex = process_texture_strcode(material["mdn_unknownTexture"])
+
     if "mdn_unknown_color1" in material:
         mdn_material.unknown_color1 = tuple(material["mdn_unknown_color1"])
     if "mdn_unknown_color2" in material:
@@ -449,6 +445,7 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
     if "mdn_unknown_color6" in material:
         mdn_material.unknown_color6 = tuple(material["mdn_unknown_color6"])
     
+    mdn_material.textureCount = len(used_textures)
     mdn_material.colorCount = 8
 
 def create_default_material(material):
