@@ -314,7 +314,7 @@ def read_vertex_buffer(reader, vertex_def, num_vertices):
                         else:
                             vertex_data['tangent'] = (x, y, z)
 
-                elif component_type == MDN_Definition.COLOUR:
+                elif component_type == MDN_Definition.COLOR:
                     reader.seek(vert_start + pos)
                     r = reader.read_uint8() / 255.0
                     g = reader.read_uint8() / 255.0

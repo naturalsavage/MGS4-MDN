@@ -47,7 +47,6 @@ def get_vertex_weights(vertex, vertex_groups, bone_name_to_idx):
             if not group_name in bone_name_to_idx:
                 print(f"Warning: unable to find bone {group_name}")
                 continue
-
             bone_idx = bone_name_to_idx[group_name]
             weights.append((bone_idx, weight))
 
@@ -519,19 +518,25 @@ def create_vertex_definition(mesh_obj):
     position.append(current_offset)
     current_offset += 4
 
-    # 4. BoneIdx
+    # 4. Vertex Colors
+    if mesh.vertex_colors:
+        definition.append(MDN_DataType.UBYTE << 4 | MDN_Definition.COLOR)
+        position.append(current_offset)
+        current_offset += 4
+        
+    # 5. BoneIdx
     if mesh_obj.vertex_groups and any(v.groups for v in mesh.vertices):
         definition.append(MDN_DataType.BYTE << 4 | MDN_Definition.BONEIDX)
         position.append(current_offset)
         current_offset += 4
 
-    # 5. Tangent
+    # 6. Tangent
     if mesh.uv_layers:
         definition.append(MDN_DataType.FLOAT_COMPRESSED << 4 | MDN_Definition.TANGENT)
         position.append(current_offset)
         current_offset += 4
 
-    # 6. UV Layers (up to 6 channels)
+    # 7. UV Layers (up to 6 channels)
     if mesh.uv_layers:
         # Ensure alignment for UV data
         current_offset = (current_offset + 3) & ~3
@@ -552,7 +557,6 @@ def create_vertex_definition(mesh_obj):
 
 def calculate_tangents(mesh_obj):
     mesh = mesh_obj.data
-
     if mesh.uv_layers:
         mesh.calc_tangents()
     else:
@@ -627,6 +631,14 @@ def write_vertex_data(writer, mesh_obj, vertex_def, bone_name_to_idx):
     vertex_tangents = calculate_tangents(mesh_obj)
     vertex_normals = calculate_normals(mesh_obj)
 
+    vertex_colors = {}
+    if mesh.vertex_colors:
+        color_layer = mesh.vertex_colors.active
+        for poly in mesh.polygons:
+            for loop_idx, vertex_idx in zip(poly.loop_indices, poly.vertices):
+                if vertex_idx not in vertex_colors:
+                    vertex_colors[vertex_idx] = color_layer.data[loop_idx].color
+
     vertex_uvs = {}
     if mesh.uv_layers:
         for uv_layer in mesh.uv_layers:
@@ -665,6 +677,19 @@ def write_vertex_data(writer, mesh_obj, vertex_def, bone_name_to_idx):
             elif component_type == MDN_Definition.TANGENT:
                 tangent = vertex_tangents.get(vertex_idx, mathutils.Vector((1, 0, 0)))
                 writer.write_uint32(normalize_and_compress_vector(tangent))
+
+            elif component_type == MDN_Definition.COLOR:
+                if vertex_idx in vertex_colors:
+                    color = vertex_colors[vertex_idx]
+                    writer.write_uint8(int(color[0] * 255))
+                    writer.write_uint8(int(color[1] * 255))
+                    writer.write_uint8(int(color[2] * 255))
+                    writer.write_uint8(int(color[3] * 255) if len(color) > 3 else 255)
+                else:
+                    writer.write_uint8(255)
+                    writer.write_uint8(255)
+                    writer.write_uint8(255)
+                    writer.write_uint8(255)
 
             elif (component_type >= MDN_Definition.TEXTURE00 and
                   component_type <= MDN_Definition.TEXTURE05):

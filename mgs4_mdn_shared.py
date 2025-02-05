@@ -697,7 +697,7 @@ class MDN_Definition:
     POSITION = 0
     WEIGHT = 1
     NORMAL = 2
-    COLOUR = 3
+    COLOR = 3
     UNKNOWNA = 4
     TEXTURE3DS = 5
     UNKNOWNC = 6
