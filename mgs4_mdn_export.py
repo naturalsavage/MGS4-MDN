@@ -262,52 +262,36 @@ def collect_groups(meshes, armature_obj=None):
     
     return groups, mesh_to_group
 
-def calculate_world_bounds(meshes):
-    bounds_min = [float('inf')] * 3
-    bounds_max = [float('-inf')] * 3
-    
-    unit_scale = bpy.context.scene.unit_settings.scale_length
-    game_scale = 100.0 * unit_scale
-    
-    for mesh_obj in meshes:
-        world_matrix = mesh_obj.matrix_world
-        
-        for vertex in mesh_obj.data.vertices:
-            world_vertex = world_matrix @ vertex.co
-            scaled_vertex = world_vertex * game_scale
-            
-            for i in range(3):
-                bounds_min[i] = min(bounds_min[i], scaled_vertex[i])
-                bounds_max[i] = max(bounds_max[i], scaled_vertex[i])
-    
-    padding = 10.0
-    for i in range(3):
-        bounds_min[i] -= padding
-        bounds_max[i] += padding
-    
-    return bounds_min, bounds_max
-
 def get_mesh_bounds(mesh_obj):
     bounds_min = [float('inf')] * 3
     bounds_max = [float('-inf')] * 3
     
-    unit_scale = bpy.context.scene.unit_settings.scale_length
-    game_scale = MODEL_EXPORT_SCALE * unit_scale
+    loc, rot, scale = mesh_obj.matrix_world.decompose()
     
-    world_matrix = mesh_obj.matrix_world
+    rot_mat = rot.to_matrix().to_4x4()
+    
     for vertex in mesh_obj.data.vertices:
-        world_co = world_matrix @ vertex.co
-        scaled_co = world_co * game_scale
+        rotated = rot_mat @ vertex.co
+        world_pos = rotated + loc
+        
+        game_co = (world_pos[0], world_pos[1], world_pos[2])
         
         for i in range(3):
-            bounds_min[i] = min(bounds_min[i], scaled_co[i])
-            bounds_max[i] = max(bounds_max[i], scaled_co[i])
+            bounds_min[i] = min(bounds_min[i], game_co[i])
+            bounds_max[i] = max(bounds_max[i], game_co[i])
+        
+    return bounds_min, bounds_max
+
+def calculate_world_bounds(meshes):
+    bounds_min = [float('inf')] * 3
+    bounds_max = [float('-inf')] * 3
     
-    padding = 10.0
-    for i in range(3):
-        bounds_min[i] -= padding
-        bounds_max[i] += padding
-    
+    for mesh_obj in meshes:
+        mesh_min, mesh_max = get_mesh_bounds(mesh_obj)
+        for i in range(3):
+            bounds_min[i] = min(bounds_min[i], mesh_min[i])
+            bounds_max[i] = max(bounds_max[i], mesh_max[i])
+        
     return bounds_min, bounds_max
 
 def calculate_vertex_offset(previous_meshes):
