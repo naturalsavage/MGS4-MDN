@@ -20,10 +20,12 @@ def strcode_from_name(name):
             
         if name.startswith("0x"):
             return int(name[2:], 16)
-        else:
+        elif len(name) <= 8:
             return int(name, 16)
+        else:
+            return strcode(name)
     except ValueError:
-        return strcode(name)
+        return 0xDEADBEEF
         
 def float_to_half(value):
     packed = struct.pack('f', value)
