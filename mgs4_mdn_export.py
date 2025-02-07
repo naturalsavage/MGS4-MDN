@@ -378,9 +378,9 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
             from_node = node_input.links[0].from_node
             if from_node.type == 'TEX_IMAGE' and from_node.image:
                 try:
-                    tex_name = from_node.image.name.split('.')[0]
+                    tex_name = os.path.splitext(os.path.basename(from_node.image.filepath))[0]
                     strcode = strcode_from_name(tex_name)
-                    
+
                     input_name = node_input.name.lower()
                     if input_name == 'base color':
                         mdn_material.diffuseIndex = process_texture_strcode(strcode)
@@ -394,7 +394,7 @@ def process_material_nodes(material, mdn_material, textures, texture_lookup):
         from_node = normal_map_node.inputs['Color'].links[0].from_node
         if from_node.type == 'TEX_IMAGE' and from_node.image:
             try:
-                tex_name = from_node.image.name.split('.')[0]
+                tex_name = os.path.splitext(os.path.basename(from_node.image.filepath))[0]
                 strcode = strcode_from_name(tex_name)
                 mdn_material.normalIndex = process_texture_strcode(strcode)
             except ValueError:
