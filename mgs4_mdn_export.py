@@ -25,14 +25,25 @@ def write_face_buffer(writer, mesh_obj):
         
     start_offset = writer.offset
     mesh = mesh_obj.data
+    total_size = 0
     
+    material_groups = {}
     for tri in mesh.loop_triangles:
-        writer.write_uint16(tri.vertices[0])
-        writer.write_uint16(tri.vertices[1])
-        writer.write_uint16(tri.vertices[2])
-
-    writer.pad_to_alignment(16)
-    return writer.offset - start_offset
+        mat_idx = tri.material_index
+        if mat_idx not in material_groups:
+            material_groups[mat_idx] = []
+        material_groups[mat_idx].append(tri)
+    
+    for mat_idx, triangles in material_groups.items():
+        for tri in triangles:
+            writer.write_uint16(tri.vertices[0])
+            writer.write_uint16(tri.vertices[1])
+            writer.write_uint16(tri.vertices[2])
+        
+        writer.pad_to_alignment(16)
+        total_size += ((len(triangles) * 6 + 15) & ~15)
+    
+    return total_size
 
 def get_vertex_weights(vertex, vertex_groups, bone_name_to_idx):
     weights = []
@@ -306,16 +317,32 @@ def calculate_vertex_offset(previous_meshes):
 
     return offset
 
-def get_face_material_index(mesh_obj, material_lookup):
-    if mesh_obj.material_slots and mesh_obj.material_slots[0].material:
-        material = mesh_obj.material_slots[0].material
-        if material.name in material_lookup:
-            return material_lookup[material.name]
+def get_face_material_indices(mesh_obj, material_lookup):
+    material_indices = []
+    if not mesh_obj.material_slots:
+        return [0]
+        
+    for slot in mesh_obj.material_slots:
+        if slot.material and slot.material.name in material_lookup:
+            material_indices.append(material_lookup[slot.material.name])
         else:
-            print(f"Warning: Material {material.name} not found in lookup")
-    else:
-        print(f"Warning: Mesh {mesh_obj.name} has no material assigned")
-    return 0
+            print(f"Warning: Material {slot.material.name if slot.material else 'None'} not found in lookup")
+            material_indices.append(0)
+    
+    return material_indices if material_indices else [0]
+
+def calculate_face_counts(mesh_obj):
+    if not mesh_obj.data.loop_triangles:
+        mesh_obj.data.calc_loop_triangles()
+    
+    material_counts = {}
+    for tri in mesh_obj.data.loop_triangles:
+        mat_idx = tri.material_index
+        if mat_idx not in material_counts:
+            material_counts[mat_idx] = 0
+        material_counts[mat_idx] += 1
+    
+    return [(mat_idx, count * 3) for mat_idx, count in material_counts.items()]
 
 def process_material_nodes(material, mdn_material, textures, texture_lookup):
     if not material.use_nodes:
@@ -785,17 +812,21 @@ class ExportMDN(Operator, ExportHelper):
         faces = []
         current_face_offset = 0
         for mesh_obj in meshes:
-            mat_group = get_face_material_index(mesh_obj, material_lookup)
-            face = MDN_Face(
-                type=0x8000,
-                count=len(mesh_obj.data.loop_triangles) * 3,
-                offset=current_face_offset,
-                matGroup=mat_group,
-                start=0,
-                size=len(mesh_obj.data.vertices)
-            )
-            faces.append(face)
-            current_face_offset += ((len(mesh_obj.data.loop_triangles) * 6 + 15) & ~15)
+            material_face_counts = calculate_face_counts(mesh_obj)
+            material_indices = get_face_material_indices(mesh_obj, material_lookup)
+            
+            for mat_idx, face_count in material_face_counts:
+                material_group = material_indices[mat_idx] if mat_idx < len(material_indices) else 0
+                face = MDN_Face(
+                    type=0x8000,
+                    count=face_count,
+                    offset=current_face_offset,
+                    matGroup=material_group,
+                    start=0,
+                    size=len(mesh_obj.data.vertices)
+                )
+                faces.append(face)
+                current_face_offset += ((face_count * 2 + 15) & ~15)
 
         basename = os.path.splitext(os.path.basename(filepath))[0]
 
@@ -806,7 +837,7 @@ class ExportMDN(Operator, ExportHelper):
         header.numBones = len(bones)
         header.numGroups = len(groups)
         header.numMesh = len(meshes)
-        header.numFace = len(meshes)
+        header.numFace = len(faces)
         header.numVertexDefinition = len(meshes)
         header.min = bounds_min + [1.0]
         header.max = bounds_max + [1.0]
@@ -828,14 +859,17 @@ class ExportMDN(Operator, ExportHelper):
         # 3. Write mesh data
         writer.pad_to_alignment(16)
         header.meshOffset = writer.get_offset()
-        for mesh_obj in meshes:
+        for mesh_idx, mesh_obj in enumerate(meshes):
             mesh = mesh_obj.data
             bounds_min, bounds_max = get_mesh_bounds(mesh_obj)
+
+            material_face_counts = calculate_face_counts(mesh_obj)
+
             mdn_mesh = MDN_Mesh(
                 groupIdx=mesh_to_group.get(mesh_obj, 0),
                 flag=0,
-                numFaceIdx=1,
-                faceIdx=meshes.index(mesh_obj),
+                numFaceIdx=len(material_face_counts),
+                faceIdx=sum(len(m.material_slots) for m in meshes[:mesh_idx]),
                 vertexDefIdx=meshes.index(mesh_obj),
                 skinIdx=mesh_obj.get("mdn_skin_index", 0),
                 numVertex=len(mesh.vertices),
