@@ -10,8 +10,8 @@ import os
 bl_info = {
     "name": "Metal Gear Solid 4 MDN Import",
     "author": "cipherxof",
-    "version": (1, 0, 0),
-    "blender": (4, 3, 2),
+    "version": (1, 0, 1),
+    "blender": (4, 5, 2),
     "location": "File > Import > MGS4 MDN (.mdn)",
     "description": "Import MGS4 MDN format",
     "category": "Import-Export",
