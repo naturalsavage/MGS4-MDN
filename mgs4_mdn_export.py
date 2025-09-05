@@ -276,21 +276,18 @@ def collect_groups(meshes, armature_obj=None):
 def get_mesh_bounds(mesh_obj):
     bounds_min = [float('inf')] * 3
     bounds_max = [float('-inf')] * 3
-    
-    loc, rot, scale = mesh_obj.matrix_world.decompose()
-    
-    rot_mat = rot.to_matrix().to_4x4()
-    
+
+    unit_scale = bpy.context.scene.unit_settings.scale_length
+    game_scale = MODEL_EXPORT_SCALE * unit_scale
+
     for vertex in mesh_obj.data.vertices:
-        rotated = rot_mat @ vertex.co
-        world_pos = rotated + loc
-        
-        game_co = (world_pos[0], world_pos[1], world_pos[2])
-        
+        world_pos = mesh_obj.matrix_world @ vertex.co
+        scaled = world_pos * game_scale
+
         for i in range(3):
-            bounds_min[i] = min(bounds_min[i], game_co[i])
-            bounds_max[i] = max(bounds_max[i], game_co[i])
-        
+            bounds_min[i] = min(bounds_min[i], scaled[i])
+            bounds_max[i] = max(bounds_max[i], scaled[i])
+
     return bounds_min, bounds_max
 
 def calculate_world_bounds(meshes):
