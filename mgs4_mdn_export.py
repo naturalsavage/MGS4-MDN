@@ -531,7 +531,7 @@ def create_vertex_definition(mesh_obj):
         
     # 5. BoneIdx
     if mesh_obj.vertex_groups and any(v.groups for v in mesh.vertices):
-        definition.append(MDN_DataType.BYTE << 4 | MDN_Definition.BONEIDX)
+        definition.append(MDN_DataType.UBYTE << 4 | MDN_Definition.BONEIDX)
         position.append(current_offset)
         current_offset += 4
 
@@ -723,10 +723,10 @@ def write_vertex_data(writer, mesh_obj, vertex_def, bone_name_to_idx):
             elif component_type == MDN_Definition.BONEIDX:
                 if bone_indices:
                     for idx in bone_indices:
-                        writer.write_int8(idx)
+                        writer.write_uint8(idx)
                 else:
                     for _ in range(4):
-                        writer.write_int8(0)
+                        writer.write_uint8(0)
 
             if writer.offset > end_pos:
                 end_pos = writer.offset
