@@ -10,8 +10,8 @@ import os
 bl_info = {
     "name": "Metal Gear Solid 4 MDN Import",
     "author": "cipherxof",
-    "version": (1, 0, 0),
-    "blender": (4, 3, 2),
+    "version": (1, 0, 1),
+    "blender": (4, 5, 2),
     "location": "File > Import > MGS4 MDN (.mdn)",
     "description": "Import MGS4 MDN format",
     "category": "Import-Export",
@@ -36,7 +36,7 @@ def parse_vertex_component(reader, component_type, base_offset, pos):
 def find_texture_file(textures_path, strcode):
     for i in range(4, 9):
         fname = ("{:0" + str(i) + "X}").format(strcode)
-        
+
         tex_path = os.path.join(textures_path, fname + ".dds")
         if os.path.exists(tex_path):
             return tex_path
@@ -46,7 +46,7 @@ def find_texture_file(textures_path, strcode):
             return tex_path
 
     print(f"Warning: could not find texture {strcode:08x}.dds")
-    return tex_path
+    return None
 
 def create_armature(bones, name="MDN_Armature"):
     armature = bpy.data.armatures.new(name)
